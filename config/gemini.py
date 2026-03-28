@@ -1,6 +1,7 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from .settings import GEMINI_API_KEY
 
 def get_llm(model_name: str = "gemini-2.5-flash", temperature: float = 0):
     return ChatGoogleGenerativeAI(
