@@ -55,7 +55,7 @@ def get_retrieve_tool(vectorstore: VectorStore):
 
     retriever_tool = create_retriever_tool(
         retriever=retriever,
-        name="retrive_documents",
+        name="retrieve_documents",
         description="Search and retrieve relevant documents from the knowledge base. "
                     "Use this tool when you need external information or facts to answer the question."
     )
