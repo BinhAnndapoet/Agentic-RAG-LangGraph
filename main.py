@@ -1,3 +1,4 @@
+import uuid
 from langchain_core.messages import HumanMessage
 from retriever import ingest_documents, get_retriever_tool
 from agent_rag import compile_rag_graph
@@ -15,8 +16,12 @@ def main():
     tools = [retriever_tool]
     
     app = compile_rag_graph(tools)
+
+    thread_id = str(uuid.uuid4)
+    config = {"configurable": {"thread_id": thread_id}}
     
-    print("\n SYSTEM IS READY! (Type 'q' to quit)")
+    print(f"\n SYSTEM IS READY! (Session: {thread_id})")
+    print("(Type 'q' to quit)")
     print("=" * 50)
 
     while True:
@@ -35,7 +40,7 @@ def main():
         
 
         final_state = None
-        for output in app.stream(inputs):
+        for output in app.stream(inputs, config=config):
             for key, value in output.items():
                 print(f"  Processing at Node: [{key.upper()}]")
                 final_state = value

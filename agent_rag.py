@@ -2,6 +2,7 @@ from typing import Literal
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
 
 from state_rag import RAGState, RAGInputState, GradeDocuments, RewrittenQuery
 from utils import extract_context_from_messages
@@ -170,4 +171,5 @@ def compile_rag_graph(tools):
     workflow.add_edge("rewrite", "agent")
     workflow.add_edge("generate", END)
 
-    return workflow.compile()
+    memory = MemorySaver()
+    return workflow.compile(checkpointer=memory)
