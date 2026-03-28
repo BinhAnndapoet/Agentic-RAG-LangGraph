@@ -10,8 +10,9 @@ def extract_context_from_messages(messages: list) -> str:
 
     for msg in reversed(messages):
         if isinstance(msg, ToolMessage):
-            context = msg.content
-            break
+            if msg.name == "retrieve_documents":
+                context = msg.content
+                break
 
     return context
 
