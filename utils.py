@@ -14,5 +14,8 @@ def extract_context_from_messages(messages: list) -> str:
                 context = msg.content
                 break
 
+    if not context:
+        print("--- WARNING: No content found from the 'retrieve_documents' tool ---")
+
     return context
 
