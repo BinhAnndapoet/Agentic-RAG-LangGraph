@@ -20,7 +20,7 @@ def main():
     print("=" * 50)
 
     while True:
-        user_input = input("\n You: ")
+        user_input = input("\n User: ")
         
         if user_input.strip().lower() == 'q':
             print("Goodbye! See you next time.")
