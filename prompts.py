@@ -23,3 +23,11 @@ Rewrite this question to be more search-friendly by:
 
 Return ONLY the rewritten question, nothing else."""
 
+generation_prompt = """You are an AI assistant. Answer the question based on the provided context.
+
+Context: {context}
+
+Question: {question}
+
+Provide a clear, accurate answer based solely on the context provided."""
+
