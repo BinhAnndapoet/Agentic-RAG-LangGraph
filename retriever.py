@@ -4,7 +4,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.tools import create_retriever_tool
 from langchain_core.vectorstores import VectorStore
-from .config.gemini import get_embeddings
+from config.gemini import get_embeddings
 
 def ingest_documents(urls: List[str]) -> VectorStore:
     """
