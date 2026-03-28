@@ -40,7 +40,7 @@ def ingest_documents(urls: List[str]) -> VectorStore:
     return vectorstore
 
 
-def get_retrieve_tool(vectorstore: VectorStore):
+def get_retriever_tool(vectorstore: VectorStore):
     """
     Convert the VectorStore into a tool that the Agent can call.
     
