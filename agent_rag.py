@@ -3,10 +3,10 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 
-from .state_rag import RAGState, RAGInputState, GradeDocuments, RewrittenQuery
-from .utils import extract_context_from_messages
-from .prompts import grade_prompt, rewrite_prompt, generation_prompt
-from .config.gemini import get_llm 
+from state_rag import RAGState, RAGInputState, GradeDocuments, RewrittenQuery
+from utils import extract_context_from_messages
+from prompts import grade_prompt, rewrite_prompt, generation_prompt
+from config.gemini import get_llm 
 
 MAX_RETRIES = 3
 
@@ -29,7 +29,7 @@ def create_llm_call_node(tools):
     return llm_call
 
 
-def rewrite_query(state: RAGState):
+def rewrite_query_node(state: RAGState):
     """Rewrite the query if the retrieved data is not satisfactory."""
     question = state["messages"][0].content
     
@@ -45,13 +45,45 @@ def rewrite_query(state: RAGState):
     }
 
 
-def generate_final_answer(state: RAGState):
-    """Compile the context and generate the final answer."""
-    question = state["messages"][0].content
-    context = extract_context_from_messages(state.get("messages", []))
+def grade_documents_node(state: RAGState):
+    """Grading and save the result into the state."""
+    messages = state["messages"]
+    question = messages[0].content
+    context = extract_context_from_messages(messages)
     
+    if not context:
+        return {"retries": state.get("retries", 0), "messages": [SystemMessage(content="no_context")]}
+
+    formatted_prompt = grade_prompt.format(question=question, documents_content=context[:1500])
+    
+    grade = structured_grader.invoke([HumanMessage(content=formatted_prompt)]) 
+    
+    return {
+        "messages": [HumanMessage(content=grade.binary_score, name="grader_score")],
+        "retries": state.get("retries", 0)
+    }
+
+
+def generate_final_answer_node(state: RAGState):
+    """Compile the context and generate the final answer."""
+    messages = state.get("messages", [])
+    if not messages:
+        return {"messages": [HumanMessage(content="I don't have enough information to answer.")]}
+        
+    question = messages[0].content
+    context = extract_context_from_messages(messages)
+    
+    if not context or context.strip() == "":
+        context = "No relevant documents were found to answer this question."
+
     formatted_prompt = generation_prompt.format(context=context, question=question)
-    response = model.invoke([SystemMessage(content=formatted_prompt)])
+    
+    # Checking before generating answer
+    print(f"CHECK - Question: {question}")
+    print(f"CHECK - Context Length: {len(context)}")
+    print(f"CHECK - Formatted Prompt: {formatted_prompt[:100]}...")
+    
+    response = model.invoke([HumanMessage(content=formatted_prompt)])
     
     return {"messages": [response]}
 
@@ -79,73 +111,45 @@ def route_after_agent(state: RAGState) -> Literal["retrieve", "__end__"]:
     return "__end__"
 
 
-def grade_documents(state: RAGState) -> Literal["generate", "rewrite"]:
+def decide_to_generate(state: RAGState) -> Literal["generate", "rewrite"]:
     """
-    Grades the retrieved documents and decides whether to generate or rewrite the answer.
-
-    This edge logic checks if the retries limit has been reached, and if so, generates
-    the final answer. Otherwise, it uses the grading model to evaluate the relevance of 
-    the documents and decides whether to rewrite the query or proceed with generating the 
-    final answer.
+    Decides whether to generate the final answer or rewrite the query based on the grading result and retry count.
+    
+    This function inspects the latest message in the state to determine if the grading result was positive 
+    (i.e., contains the word "yes"). If the grading result is positive or if the retry count has reached 
+    the maximum allowed retries (`MAX_RETRIES`), it returns the decision to generate the final answer.
+    Otherwise, it returns the decision to rewrite the query and attempt again.
 
     Args:
-        state (RAGState): The current state of the RAG process.
-
+        state (RAGState): The current state of the RAG process, including messages and retry count.
+        
     Returns:
-        Literal["generate", "rewrite"]: The next step after grading.
+        Literal["generate", "rewrite"]: 
+            - "generate" if the grading result is positive or the maximum retry limit is reached.
+            - "rewrite" if the grading result is negative and retries are still within the limit.
     """
 
+    last_message = state["messages"][-1]
     retries = state.get("retries", 0)
+
     if retries >= MAX_RETRIES:
-        print(f"\n Reached search limit ({MAX_RETRIES} attempts). Generating the best possible answer.")
         return "generate"
-        
-    messages = state["messages"]
-    question = messages[0].content
-    context = extract_context_from_messages(messages)
-    
-    if not context:
+
+    if "yes" in last_message.content.lower():
         return "generate"
-    
-    formatted_prompt = grade_prompt.format(question=question, documents_content=context[:1500])
-    grade = structured_grader.invoke([SystemMessage(content=formatted_prompt)])
-    
-    print(f"\n Grading documents: {grade.binary_score.upper()}")
-    print(f"Reasoning: {grade.reasoning}\n")
-    
-    if grade.binary_score.lower() == "yes":
-        return "generate"
-    else:
-        return "rewrite"
+    return "rewrite"
 
 
 # ==== GRAPH BUILDER ====
 
 def compile_rag_graph(tools):
-    """
-    Initializes the RAG graph. Call this function from the main.py file.
-
-    This function sets up the workflow for the research agent by defining nodes and edges.
-    It links the model's call, the retrieval process, the rewriting process, and the 
-    final answer generation. It also defines routing logic between the nodes based on 
-    certain conditions.
-
-    Args:
-        tools: A list of tools to be used by the agent.
-
-    Returns:
-        StateGraph: The compiled RAG graph ready for execution.
-    """
-
     workflow = StateGraph(RAGState, input_schema=RAGInputState)
     
-    retrieve_node = ToolNode(tools)
-    llm_call_node = create_llm_call_node(tools)
-    
-    workflow.add_node("agent", llm_call_node)
-    workflow.add_node("retrieve", retrieve_node)
-    workflow.add_node("rewrite", rewrite_query)
-    workflow.add_node("generate", generate_final_answer)
+    workflow.add_node("agent", create_llm_call_node(tools))
+    workflow.add_node("retrieve", ToolNode(tools))
+    workflow.add_node("grade_docs", grade_documents_node) 
+    workflow.add_node("rewrite", rewrite_query_node)
+    workflow.add_node("generate", generate_final_answer_node)
 
     workflow.add_edge(START, "agent")
     
@@ -154,14 +158,16 @@ def compile_rag_graph(tools):
         route_after_agent,
         {"retrieve": "retrieve", "__end__": END}
     )
-    
+
+    workflow.add_edge("retrieve", "grade_docs")
+
     workflow.add_conditional_edges(
-        "retrieve",
-        grade_documents,
+        "grade_docs",
+        decide_to_generate,
         {"generate": "generate", "rewrite": "rewrite"}
     )
-    
+
     workflow.add_edge("rewrite", "agent")
     workflow.add_edge("generate", END)
-    
+
     return workflow.compile()
