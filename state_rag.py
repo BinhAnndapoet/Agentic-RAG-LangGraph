@@ -13,18 +13,17 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-class RAGState(TypedDict):
+class RAGInputState(TypedDict):
     """
-    Core state for the Agentic RAG process.
-
-    This state tracks:
-    - The sequence of messages exchanged during the RAG workflow, with automatic
-      appending of new messages.
-    - The number of retry attempts to prevent infinite loops when LLMs or
-      retrieval calls fail or return invalid results.
+    Input State for initiating the RAG process.
     """
-
     messages: Annotated[Sequence[BaseMessage], add_messages]
+
+
+class RAGState(RAGInputState):
+    """
+    Internal State for the RAG process.
+    """
     retries: int
 
 
